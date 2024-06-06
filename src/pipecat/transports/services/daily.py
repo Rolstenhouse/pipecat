@@ -19,7 +19,8 @@ from daily import (
     EventHandler,
     VirtualCameraDevice,
     VirtualMicrophoneDevice,
-    VirtualSpeakerDevice)
+    VirtualSpeakerDevice,
+)
 from pydantic.main import BaseModel
 
 from pipecat.frames.frames import (
@@ -32,7 +33,8 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     TransportMessageFrame,
     UserImageRawFrame,
-    UserImageRequestFrame)
+    UserImageRequestFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.transports.base_input import BaseInputTransport
 from pipecat.transports.base_output import BaseOutputTransport
@@ -42,11 +44,12 @@ from pipecat.vad.vad_analyzer import VADAnalyzer, VADParams
 from loguru import logger
 
 try:
-    from daily import (EventHandler, CallClient, Daily)
+    from daily import EventHandler, CallClient, Daily
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
     logger.error(
-        "In order to use the Daily transport, you need to `pip install pipecat-ai[daily]`.")
+        "In order to use the Daily transport, you need to `pip install pipecat-ai[daily]`."
+    )
     raise Exception(f"Missing module: {e}")
 
 VAD_RESET_PERIOD_MS = 2000
@@ -59,13 +62,15 @@ class DailyTransportMessageFrame(TransportMessageFrame):
 
 class WebRTCVADAnalyzer(VADAnalyzer):
 
-    def __init__(self, sample_rate=16000, num_channels=1, params: VADParams = VADParams()):
+    def __init__(
+        self, sample_rate=16000, num_channels=1, params: VADParams = VADParams()
+    ):
         super().__init__(sample_rate, num_channels, params)
 
         self._webrtc_vad = Daily.create_native_vad(
             reset_period_ms=VAD_RESET_PERIOD_MS,
             sample_rate=sample_rate,
-            channels=num_channels
+            channels=num_channels,
         )
         logger.debug("Loaded native WebRTC VAD")
 
@@ -93,9 +98,7 @@ class DailyTranscriptionSettings(BaseModel):
     endpointing: bool = True
     punctuate: bool = True
     includeRawResponse: bool = True
-    extra: Mapping[str, Any] = {
-        "interim_results": True
-    }
+    extra: Mapping[str, Any] = {"interim_results": True}
 
 
 class DailyParams(TransportParams):
@@ -131,13 +134,14 @@ class DailyTransportClient(EventHandler):
         return super().__new__(cls)
 
     def __init__(
-            self,
-            room_url: str,
-            token: str | None,
-            bot_name: str,
-            params: DailyParams,
-            callbacks: DailyCallbacks,
-            loop: asyncio.AbstractEventLoop):
+        self,
+        room_url: str,
+        token: str | None,
+        bot_name: str,
+        params: DailyParams,
+        callbacks: DailyCallbacks,
+        loop: asyncio.AbstractEventLoop,
+    ):
         super().__init__()
 
         if not self._daily_initialized:
@@ -169,13 +173,20 @@ class DailyTransportClient(EventHandler):
             "camera",
             width=self._params.camera_out_width,
             height=self._params.camera_out_height,
-            color_format=self._params.camera_out_color_format)
+            color_format=self._params.camera_out_color_format,
+        )
 
         self._mic: VirtualMicrophoneDevice = Daily.create_microphone_device(
-            "mic", sample_rate=self._params.audio_out_sample_rate, channels=self._params.audio_out_channels)
+            "mic",
+            sample_rate=self._params.audio_out_sample_rate,
+            channels=self._params.audio_out_channels,
+        )
 
         self._speaker: VirtualSpeakerDevice = Daily.create_speaker_device(
-            "speaker", sample_rate=self._params.audio_in_sample_rate, channels=self._params.audio_in_channels)
+            "speaker",
+            sample_rate=self._params.audio_in_sample_rate,
+            channels=self._params.audio_in_channels,
+        )
         Daily.select_speaker_device("speaker")
 
     @property
@@ -197,7 +208,9 @@ class DailyTransportClient(EventHandler):
 
             audio = self._speaker.read_frames(num_frames)
 
-            return AudioRawFrame(audio=audio, sample_rate=sample_rate, num_channels=num_channels)
+            return AudioRawFrame(
+                audio=audio, sample_rate=sample_rate, num_channels=num_channels
+            )
         else:
             # If no one has ever joined the meeting `read_frames()` would block,
             # instead we just wait a bit. daily-python should probably return
@@ -225,12 +238,9 @@ class DailyTransportClient(EventHandler):
 
         # For performance reasons, never subscribe to video streams (unless a
         # video renderer is registered).
-        self._client.update_subscription_profiles({
-            "base": {
-                "camera": "unsubscribed",
-                "screenVideo": "unsubscribed"
-            }
-        })
+        self._client.update_subscription_profiles(
+            {"base": {"camera": "unsubscribed", "screenVideo": "unsubscribed"}}
+        )
 
         self._client.set_user_name(self._bot_name)
 
@@ -271,7 +281,8 @@ class DailyTransportClient(EventHandler):
                         }
                     }
                 },
-            })
+            },
+        )
 
         self._handle_join_response()
 
@@ -286,9 +297,11 @@ class DailyTransportClient(EventHandler):
 
                 if self._token and self._params.transcription_enabled:
                     logger.info(
-                        f"Enabling transcription with settings {self._params.transcription_settings}")
+                        f"Enabling transcription with settings {self._params.transcription_settings}"
+                    )
                     self._client.start_transcription(
-                        self._params.transcription_settings.model_dump())
+                        self._params.transcription_settings.model_dump()
+                    )
 
                 self._callbacks.on_joined(data["participants"]["local"])
             else:
@@ -364,25 +377,26 @@ class DailyTransportClient(EventHandler):
     def stop_recording(self, stream_id):
         self._client.stop_recording(stream_id)
 
-    def capture_participant_transcription(self, participant_id: str, callback: Callable):
+    def capture_participant_transcription(
+        self, participant_id: str, callback: Callable
+    ):
         if not self._params.transcription_enabled:
             return
 
         self._transcription_renderers[participant_id] = callback
 
     def capture_participant_video(
-            self,
-            participant_id: str,
-            callback: Callable,
-            framerate: int = 30,
-            video_source: str = "camera",
-            color_format: str = "RGB"):
+        self,
+        participant_id: str,
+        callback: Callable,
+        framerate: int = 30,
+        video_source: str = "camera",
+        color_format: str = "RGB",
+    ):
         # Only enable camera subscription on this participant
-        self._client.update_subscriptions(participant_settings={
-            participant_id: {
-                "media": "subscribed"
-            }
-        })
+        self._client.update_subscriptions(
+            participant_settings={participant_id: {"media": "subscribed"}}
+        )
 
         self._video_renderers[participant_id] = callback
 
@@ -390,7 +404,8 @@ class DailyTransportClient(EventHandler):
             participant_id,
             self._video_frame_received,
             video_source=video_source,
-            color_format=color_format)
+            color_format=color_format,
+        )
 
     #
     #
@@ -464,10 +479,12 @@ class DailyTransportClient(EventHandler):
 
     def _video_frame_received(self, participant_id, video_frame):
         callback = self._video_renderers[participant_id]
-        callback(participant_id,
-                 video_frame.buffer,
-                 (video_frame.width, video_frame.height),
-                 video_frame.color_format)
+        callback(
+            participant_id,
+            video_frame.buffer,
+            (video_frame.width, video_frame.height),
+            video_frame.color_format,
+        )
 
 
 class DailyInputTransport(BaseInputTransport):
@@ -483,7 +500,8 @@ class DailyInputTransport(BaseInputTransport):
         if params.vad_enabled and not params.vad_analyzer:
             self._vad_analyzer = WebRTCVADAnalyzer(
                 sample_rate=self._params.audio_in_sample_rate,
-                num_channels=self._params.audio_in_channels)
+                num_channels=self._params.audio_in_channels,
+            )
 
     async def start(self, frame: StartFrame):
         if self._running:
@@ -496,7 +514,8 @@ class DailyInputTransport(BaseInputTransport):
         # internally for VAD processing.
         if self._params.audio_in_enabled or self._params.vad_enabled:
             self._audio_in_thread = self._loop.run_in_executor(
-                self._executor, self._audio_in_thread_handler)
+                self._executor, self._audio_in_thread_handler
+            )
 
     async def stop(self):
         if not self._running:
@@ -530,15 +549,19 @@ class DailyInputTransport(BaseInputTransport):
     # Frames
     #
 
-    def push_transcription_frame(self, frame: TranscriptionFrame | InterimTranscriptionFrame):
+    def push_transcription_frame(
+        self, frame: TranscriptionFrame | InterimTranscriptionFrame
+    ):
         future = asyncio.run_coroutine_threadsafe(
-            self._internal_push_frame(frame), self.get_event_loop())
+            self._internal_push_frame(frame), self.get_event_loop()
+        )
         future.result()
 
     def push_app_message(self, message: Any, sender: str):
         frame = DailyTransportMessageFrame(message=message, participant_id=sender)
         future = asyncio.run_coroutine_threadsafe(
-            self._internal_push_frame(frame), self.get_event_loop())
+            self._internal_push_frame(frame), self.get_event_loop()
+        )
         future.result()
 
     #
@@ -556,11 +579,12 @@ class DailyInputTransport(BaseInputTransport):
     #
 
     def capture_participant_video(
-            self,
-            participant_id: str,
-            framerate: int = 30,
-            video_source: str = "camera",
-            color_format: str = "RGB"):
+        self,
+        participant_id: str,
+        framerate: int = 30,
+        video_source: str = "camera",
+        color_format: str = "RGB",
+    ):
         self._video_renderers[participant_id] = {
             "framerate": framerate,
             "timestamp": 0,
@@ -572,7 +596,7 @@ class DailyInputTransport(BaseInputTransport):
             self._on_participant_video_frame,
             framerate,
             video_source,
-            color_format
+            color_format,
         )
 
     def request_participant_image(self, participant_id: str):
@@ -595,12 +619,11 @@ class DailyInputTransport(BaseInputTransport):
 
         if render_frame:
             frame = UserImageRawFrame(
-                user_id=participant_id,
-                image=buffer,
-                size=size,
-                format=format)
+                user_id=participant_id, image=buffer, size=size, format=format
+            )
             future = asyncio.run_coroutine_threadsafe(
-                self._internal_push_frame(frame), self.get_event_loop())
+                self._internal_push_frame(frame), self.get_event_loop()
+            )
             future.result()
 
         self._video_renderers[participant_id]["timestamp"] = curr_time
@@ -646,12 +669,13 @@ class DailyOutputTransport(BaseOutputTransport):
 class DailyTransport(BaseTransport):
 
     def __init__(
-            self,
-            room_url: str,
-            token: str | None,
-            bot_name: str,
-            params: DailyParams,
-            loop: asyncio.AbstractEventLoop | None = None):
+        self,
+        room_url: str,
+        token: str | None,
+        bot_name: str,
+        params: DailyParams,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ):
         super().__init__(loop)
 
         callbacks = DailyCallbacks(
@@ -672,7 +696,8 @@ class DailyTransport(BaseTransport):
         self._params = params
 
         self._client = DailyTransportClient(
-            room_url, token, bot_name, params, callbacks, self._loop)
+            room_url, token, bot_name, params, callbacks, self._loop
+        )
         self._input: DailyInputTransport | None = None
         self._output: DailyOutputTransport | None = None
 
@@ -741,19 +766,20 @@ class DailyTransport(BaseTransport):
 
     def capture_participant_transcription(self, participant_id: str):
         self._client.capture_participant_transcription(
-            participant_id,
-            self._on_transcription_message
+            participant_id, self._on_transcription_message
         )
 
     def capture_participant_video(
-            self,
-            participant_id: str,
-            framerate: int = 30,
-            video_source: str = "camera",
-            color_format: str = "RGB"):
+        self,
+        participant_id: str,
+        framerate: int = 30,
+        video_source: str = "camera",
+        color_format: str = "RGB",
+    ):
         if self._input:
             self._input.capture_participant_video(
-                participant_id, framerate, video_source, color_format)
+                participant_id, framerate, video_source, color_format
+            )
 
     def _on_joined(self, participant):
         self._call_async_event_handler("on_joined", participant)
@@ -781,22 +807,25 @@ class DailyTransport(BaseTransport):
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Authorization": f"Bearer {self._params.api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             }
             data = {
                 "callId": self._params.dialin_settings.call_id,
                 "callDomain": self._params.dialin_settings.call_domain,
-                "sipUri": sip_endpoint
+                "sipUri": sip_endpoint,
             }
 
             url = f"{self._params.api_url}/dialin/pinlessCallUpdate"
 
             try:
-                async with session.post(url, headers=headers, json=data, timeout=10) as r:
+                async with session.post(
+                    url, headers=headers, json=data, timeout=10
+                ) as r:
                     if r.status != 200:
                         text = await r.text()
                         logger.error(
-                            f"Unable to handle dialin-ready event (status: {r.status}, error: {text})")
+                            f"Unable to handle dialin-ready event (status: {r.status}, error: {text})"
+                        )
                         return
 
                     logger.debug("Event dialin-ready was handled successfully")
@@ -807,7 +836,9 @@ class DailyTransport(BaseTransport):
 
     def _on_dialin_ready(self, sip_endpoint):
         if self._params.dialin_settings:
-            asyncio.run_coroutine_threadsafe(self._handle_dialin_ready(sip_endpoint), self._loop)
+            asyncio.run_coroutine_threadsafe(
+                self._handle_dialin_ready(sip_endpoint), self._loop
+            )
         self._call_async_event_handler("on_dialin_ready", sip_endpoint)
 
     def _on_dialout_connected(self, data):
@@ -831,7 +862,7 @@ class DailyTransport(BaseTransport):
     def _on_first_participant_joined(self, participant):
         self._call_async_event_handler("on_first_participant_joined", participant)
 
-def _on_transcription_message(self, participant_id, message):
+    def _on_transcription_message(self, participant_id, message):
         text = message["text"]
         timestamp = message["timestamp"]
         is_final = message["rawResponse"]["is_final"]
@@ -860,5 +891,6 @@ def _on_transcription_message(self, participant_id, message):
 
     def _call_async_event_handler(self, event_name: str, *args, **kwargs):
         future = asyncio.run_coroutine_threadsafe(
-            self._call_event_handler(event_name, *args, **kwargs), self._loop)
+            self._call_event_handler(event_name, *args, **kwargs), self._loop
+        )
         future.result()
