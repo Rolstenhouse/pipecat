@@ -831,13 +831,27 @@ class DailyTransport(BaseTransport):
     def _on_first_participant_joined(self, participant):
         self._call_async_event_handler("on_first_participant_joined", participant)
 
-    def _on_transcription_message(self, participant_id, message):
+def _on_transcription_message(self, participant_id, message):
         text = message["text"]
         timestamp = message["timestamp"]
         is_final = message["rawResponse"]["is_final"]
+
+        # print(f"Transcription (from: {participant_id}): [{text}]")
+
+        speaker_ids = []
+        for word in message["rawResponse"]["words"]:
+            speaker_ids += word["speaker"]
+
+        speaker_id = max(set(speaker_ids), key=speaker_ids.count)
+
+        if speaker_id and is_final:
+            text = f"Speaker {speaker_id}: {text}"
+
         if is_final:
             frame = TranscriptionFrame(text, participant_id, timestamp)
-            logger.debug(f"Transcription (from: {participant_id}): [{text}]")
+            logger.debug(
+                f"Transcription (from: {participant_id}) (speaker_id: {speaker_id}): [{text}]"
+            )
         else:
             frame = InterimTranscriptionFrame(text, participant_id, timestamp)
 
