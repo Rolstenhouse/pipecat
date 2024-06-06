@@ -24,18 +24,14 @@ from pipecat.frames.frames import (
     LLMResponseStartFrame,
     TextFrame,
     URLImageRawFrame,
-    VisionImageRawFrame
+    VisionImageRawFrame,
 )
 from pipecat.processors.aggregators.openai_llm_context import (
     OpenAILLMContext,
-    OpenAILLMContextFrame
+    OpenAILLMContextFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection
-from pipecat.services.ai_services import (
-    ImageGenService,
-    LLMService,
-    TTSService
-)
+from pipecat.services.ai_services import ImageGenService, LLMService, TTSService
 
 try:
     from openai import AsyncOpenAI, AsyncStream, BadRequestError
@@ -44,12 +40,13 @@ try:
         ChatCompletionChunk,
         ChatCompletionFunctionMessageParam,
         ChatCompletionMessageParam,
-        ChatCompletionToolParam
+        ChatCompletionToolParam,
     )
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
     logger.error(
-        "In order to use OpenAI, you need to `pip install pipecat-ai[openai]`. Also, set `OPENAI_API_KEY` environment variable.")
+        "In order to use OpenAI, you need to `pip install pipecat-ai[openai]`. Also, set `OPENAI_API_KEY` environment variable."
+    )
     raise Exception(f"Missing module: {e}")
 
 
@@ -67,9 +64,10 @@ class BaseOpenAILLMService(LLMService):
     calls from the LLM.
     """
 
-    def __init__(self, model: str, api_key=None, base_url=None):
+    def __init__(self, model: str, api_key=None, base_url=None, max_tokens=1500):
         super().__init__()
         self._model: str = model
+        self._max_tokens: int = max_tokens
         self._client = self.create_client(api_key=api_key, base_url=base_url)
 
     def create_client(self, api_key=None, base_url=None):
@@ -85,11 +83,16 @@ class BaseOpenAILLMService(LLMService):
         # base64 encode any images
         for message in messages:
             if message.get("mime_type") == "image/jpeg":
-                encoded_image = base64.b64encode(message["data"].getvalue()).decode("utf-8")
+                encoded_image = base64.b64encode(message["data"].getvalue()).decode(
+                    "utf-8"
+                )
                 text = message["content"]
                 message["content"] = [
                     {"type": "text", "text": text},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"},
+                    },
                 ]
                 del message["data"]
                 del message["mime_type"]
@@ -99,6 +102,7 @@ class BaseOpenAILLMService(LLMService):
             await self._client.chat.completions.create(
                 model=self._model,
                 stream=True,
+                max_tokens=self._max_tokens,
                 messages=messages,
                 tools=context.tools,
                 tool_choice=context.tool_choice,
@@ -162,45 +166,40 @@ class BaseOpenAILLMService(LLMService):
         # handler, raise an exception.
         if function_name and arguments:
             if self.has_function(function_name):
-                await self._handle_function_call(context, tool_call_id, function_name, arguments)
+                await self._handle_function_call(
+                    context, tool_call_id, function_name, arguments
+                )
             else:
                 raise OpenAIUnhandledFunctionException(
-                    f"The LLM tried to call a function named '{function_name}', but there isn't a callback registered for that function.")
+                    f"The LLM tried to call a function named '{function_name}', but there isn't a callback registered for that function."
+                )
 
     async def _handle_function_call(
-            self,
-            context,
-            tool_call_id,
-            function_name,
-            arguments
+        self, context, tool_call_id, function_name, arguments
     ):
         arguments = json.loads(arguments)
         result = await self.call_function(function_name, arguments)
         arguments = json.dumps(arguments)
         if isinstance(result, (str, dict)):
             # Handle it in "full magic mode"
-            tool_call = ChatCompletionFunctionMessageParam({
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "id": tool_call_id,
-                        "function": {
-                            "arguments": arguments,
-                            "name": function_name
-                        },
-                        "type": "function"
-                    }
-                ]
-
-            })
+            tool_call = ChatCompletionFunctionMessageParam(
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": tool_call_id,
+                            "function": {"arguments": arguments, "name": function_name},
+                            "type": "function",
+                        }
+                    ],
+                }
+            )
             context.add_message(tool_call)
             if isinstance(result, dict):
                 result = json.dumps(result)
-            tool_result = ChatCompletionToolParam({
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": result
-            })
+            tool_result = ChatCompletionToolParam(
+                {"tool_call_id": tool_call_id, "role": "tool", "content": result}
+            )
             context.add_message(tool_result)
             # re-prompt to get a human answer
             await self._process_context(context)
@@ -212,7 +211,9 @@ class BaseOpenAILLMService(LLMService):
         elif isinstance(result, type(None)):
             pass
         else:
-            raise BaseException(f"Unknown return type from function callback: {type(result)}")
+            raise BaseException(
+                f"Unknown return type from function callback: {type(result)}"
+            )
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         context = None
@@ -242,7 +243,9 @@ class OpenAIImageGenService(ImageGenService):
     def __init__(
         self,
         *,
-        image_size: Literal["256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"],
+        image_size: Literal[
+            "256x256", "512x512", "1024x1024", "1792x1024", "1024x1792"
+        ],
         aiohttp_session: aiohttp.ClientSession,
         api_key: str,
         model: str = "dall-e-3",
@@ -257,10 +260,7 @@ class OpenAIImageGenService(ImageGenService):
         logger.debug(f"Generating image from prompt: {prompt}")
 
         image = await self._client.images.generate(
-            prompt=prompt,
-            model=self._model,
-            n=1,
-            size=self._image_size
+            prompt=prompt, model=self._model, n=1, size=self._image_size
         )
 
         image_url = image.data[0].url
@@ -274,7 +274,9 @@ class OpenAIImageGenService(ImageGenService):
         async with self._aiohttp_session.get(image_url) as response:
             image_stream = io.BytesIO(await response.content.read())
             image = Image.open(image_stream)
-            frame = URLImageRawFrame(image_url, image.tobytes(), image.size, image.format)
+            frame = URLImageRawFrame(
+                image_url, image.tobytes(), image.size, image.format
+            )
             yield frame
 
 
@@ -290,12 +292,13 @@ class OpenAITTSService(TTSService):
     """
 
     def __init__(
-            self,
-            *,
-            api_key: str | None = None,
-            voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = "alloy",
-            model: Literal["tts-1", "tts-1-hd"] = "tts-1",
-            **kwargs):
+        self,
+        *,
+        api_key: str | None = None,
+        voice: Literal["alloy", "echo", "fable", "onyx", "nova", "shimmer"] = "alloy",
+        model: Literal["tts-1", "tts-1-hd"] = "tts-1",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         self._voice = voice
@@ -308,15 +311,19 @@ class OpenAITTSService(TTSService):
 
         try:
             async with self._client.audio.speech.with_streaming_response.create(
-                    input=text,
-                    model=self._model,
-                    voice=self._voice,
-                    response_format="pcm",
+                input=text,
+                model=self._model,
+                voice=self._voice,
+                response_format="pcm",
             ) as r:
                 if r.status_code != 200:
                     error = await r.text()
-                    logger.error(f"Error getting audio (status: {r.status_code}, error: {error})")
-                    yield ErrorFrame(f"Error getting audio (status: {r.status_code}, error: {error})")
+                    logger.error(
+                        f"Error getting audio (status: {r.status_code}, error: {error})"
+                    )
+                    yield ErrorFrame(
+                        f"Error getting audio (status: {r.status_code}, error: {error})"
+                    )
                     return
                 async for chunk in r.iter_bytes(8192):
                     if len(chunk) > 0:
