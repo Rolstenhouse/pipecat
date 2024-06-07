@@ -64,10 +64,9 @@ class BaseOpenAILLMService(LLMService):
     calls from the LLM.
     """
 
-    def __init__(self, model: str, api_key=None, base_url=None, max_tokens=1500):
+    def __init__(self, model: str, api_key=None, base_url=None):
         super().__init__()
         self._model: str = model
-        self._max_tokens: int = max_tokens
         self._client = self.create_client(api_key=api_key, base_url=base_url)
 
     def create_client(self, api_key=None, base_url=None):
@@ -102,7 +101,6 @@ class BaseOpenAILLMService(LLMService):
             await self._client.chat.completions.create(
                 model=self._model,
                 stream=True,
-                max_tokens=self._max_tokens,
                 messages=messages,
                 tools=context.tools,
                 tool_choice=context.tool_choice,
