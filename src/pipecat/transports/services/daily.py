@@ -869,9 +869,12 @@ class DailyTransport(BaseTransport):
 
         # print(f"Transcription (from: {participant_id}): [{text}]")
 
+        logger.warning(message["rawResponse"])
+
         speaker_ids = []
-        for word in message["rawResponse"]["words"]:
-            speaker_ids += word["speaker"]
+        for alternative in message["rawResponse"]["alternatives"]:
+            for word in alternative["words"]:
+                speaker_ids += word["speaker"]
 
         speaker_id = max(set(speaker_ids), key=speaker_ids.count)
 
