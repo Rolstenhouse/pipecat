@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD 2-Clause License
 #
 
-import time
 import base64
 
 from pipecat.frames.frames import (
@@ -49,6 +48,9 @@ class AnthropicLLMService(LLMService):
         self._client = AsyncAnthropic(api_key=api_key)
         self._model = model
         self._max_tokens = max_tokens
+
+    def can_generate_metrics(self) -> bool:
+        return True
 
     def _get_messages_from_openai_context(
             self, context: OpenAILLMContext):
@@ -102,13 +104,16 @@ class AnthropicLLMService(LLMService):
 
             messages = self._get_messages_from_openai_context(context)
 
-            start_time = time.time()
+            await self.start_ttfb_metrics()
+
             response = await self._client.messages.create(
                 messages=messages,
                 model=self._model,
                 max_tokens=self._max_tokens,
                 stream=True)
-            logger.debug(f"Anthropic LLM TTFB: {time.time() - start_time}")
+
+            await self.stop_ttfb_metrics()
+
             async for event in response:
                 # logger.debug(f"Anthropic LLM event: {event}")
                 if (event.type == "content_block_delta"):
@@ -117,11 +122,13 @@ class AnthropicLLMService(LLMService):
                     await self.push_frame(LLMResponseEndFrame())
 
         except Exception as e:
-            logger.error(f"Anthrophic exception: {e}")
+            logger.error(f"Anthropic exception: {e}")
         finally:
             await self.push_frame(LLMFullResponseEndFrame())
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
         context = None
 
         if isinstance(frame, OpenAILLMContextFrame):

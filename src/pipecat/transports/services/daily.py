@@ -28,6 +28,7 @@ from pipecat.frames.frames import (
     Frame,
     ImageRawFrame,
     InterimTranscriptionFrame,
+    MetricsFrame,
     SpriteFrame,
     StartFrame,
     TranscriptionFrame,
@@ -540,10 +541,10 @@ class DailyInputTransport(BaseInputTransport):
     #
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
         if isinstance(frame, UserImageRequestFrame):
             self.request_participant_image(frame.user_id)
-
-        await super().process_frame(frame, direction)
 
     #
     # Frames
@@ -659,6 +660,16 @@ class DailyOutputTransport(BaseOutputTransport):
     def send_message(self, frame: DailyTransportMessageFrame):
         self._client.send_message(frame)
 
+    def send_metrics(self, frame: MetricsFrame):
+        ttfb = [{"name": n, "time": t} for n, t in frame.ttfb.items()]
+        message = DailyTransportMessageFrame(message={
+            "type": "pipecat-metrics",
+            "metrics": {
+                "ttfb": ttfb
+            },
+        })
+        self._client.send_message(message)
+
     def write_raw_audio_frames(self, frames: bytes):
         self._client.write_raw_audio_frames(frames)
 
@@ -734,7 +745,7 @@ class DailyTransport(BaseTransport):
     # DailyTransport
     #
 
-    @property
+    @ property
     def participant_id(self) -> str:
         return self._client.participant_id
 
