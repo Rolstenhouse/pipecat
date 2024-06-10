@@ -3,13 +3,14 @@
 #
 # SPDX-License-Identifier: BSD 2-Clause License
 #
+
+import aiohttp
 import base64
 import io
 import json
-import time
+
 from typing import AsyncGenerator, List, Literal
 
-import aiohttp
 from loguru import logger
 from PIL import Image
 
@@ -72,6 +73,9 @@ class BaseOpenAILLMService(LLMService):
     def create_client(self, api_key=None, base_url=None):
         return AsyncOpenAI(api_key=api_key, base_url=base_url)
 
+    def can_generate_metrics(self) -> bool:
+        return True
+
     async def _stream_chat_completions(
         self, context: OpenAILLMContext
     ) -> AsyncStream[ChatCompletionChunk]:
@@ -96,7 +100,6 @@ class BaseOpenAILLMService(LLMService):
                 del message["data"]
                 del message["mime_type"]
 
-        start_time = time.time()
         chunks: AsyncStream[ChatCompletionChunk] = (
             await self._client.chat.completions.create(
                 model=self._model,
@@ -107,23 +110,14 @@ class BaseOpenAILLMService(LLMService):
             )
         )
 
-        logger.debug(f"OpenAI LLM TTFB: {time.time() - start_time}")
-
         return chunks
-
-    async def _chat_completions(self, messages) -> str | None:
-        response: ChatCompletion = await self._client.chat.completions.create(
-            model=self._model, stream=False, messages=messages
-        )
-        if response and len(response.choices) > 0:
-            return response.choices[0].message.content
-        else:
-            return None
 
     async def _process_context(self, context: OpenAILLMContext):
         function_name = ""
         arguments = ""
         tool_call_id = ""
+
+        await self.start_ttfb_metrics()
 
         chunk_stream: AsyncStream[ChatCompletionChunk] = (
             await self._stream_chat_completions(context)
@@ -132,6 +126,8 @@ class BaseOpenAILLMService(LLMService):
         async for chunk in chunk_stream:
             if len(chunk.choices) == 0:
                 continue
+
+            await self.stop_ttfb_metrics()
 
             if chunk.choices[0].delta.tool_calls:
                 # We're streaming the LLM response to enable the fastest response times.
@@ -214,6 +210,8 @@ class BaseOpenAILLMService(LLMService):
             )
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+
         context = None
         if isinstance(frame, OpenAILLMContextFrame):
             context: OpenAILLMContext = frame.context
@@ -304,10 +302,15 @@ class OpenAITTSService(TTSService):
 
         self._client = AsyncOpenAI(api_key=api_key)
 
+    def can_generate_metrics(self) -> bool:
+        return True
+
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         logger.debug(f"Generating TTS: [{text}]")
 
         try:
+            await self.start_ttfb_metrics()
+
             async with self._client.audio.speech.with_streaming_response.create(
                 input=text,
                 model=self._model,
@@ -325,6 +328,7 @@ class OpenAITTSService(TTSService):
                     return
                 async for chunk in r.iter_bytes(8192):
                     if len(chunk) > 0:
+                        await self.stop_ttfb_metrics()
                         frame = AudioRawFrame(chunk, 24_000, 1)
                         yield frame
         except BadRequestError as e:

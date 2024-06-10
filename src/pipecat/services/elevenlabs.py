@@ -31,6 +31,9 @@ class ElevenLabsTTSService(TTSService):
         self._aiohttp_session = aiohttp_session
         self._model = model
 
+    def can_generate_metrics(self) -> bool:
+        return True
+
     async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
         logger.debug(f"Generating TTS: [{text}]")
 
@@ -47,6 +50,8 @@ class ElevenLabsTTSService(TTSService):
             "Content-Type": "application/json",
         }
 
+        await self.start_ttfb_metrics()
+
         async with self._aiohttp_session.post(url, json=payload, headers=headers, params=querystring) as r:
             if r.status != 200:
                 text = await r.text()
@@ -56,5 +61,6 @@ class ElevenLabsTTSService(TTSService):
 
             async for chunk in r.content:
                 if len(chunk) > 0:
+                    await self.stop_ttfb_metrics()
                     frame = AudioRawFrame(chunk, 16000, 1)
                     yield frame
