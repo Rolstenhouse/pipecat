@@ -877,9 +877,10 @@ class DailyTransport(BaseTransport):
                 speaker_ids.append(word["speaker"])
 
         speaker_id = max(set(speaker_ids), key=speaker_ids.count)
+        logger.log(f"Speaker ID: {speaker_id}")
 
-        if speaker_id and is_final:
-            text = f"Speaker {speaker_id}: {text}"
+        if speaker_id is not None and is_final:
+            text = f"[Speaker {speaker_id}]: {text}"
 
         if is_final:
             frame = TranscriptionFrame(text, participant_id, timestamp)
