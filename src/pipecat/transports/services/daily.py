@@ -872,7 +872,7 @@ class DailyTransport(BaseTransport):
         logger.warning(message["rawResponse"])
 
         speaker_ids = []
-        for alternative in message["rawResponse"]["alternatives"]:
+        for alternative in message["rawResponse"]["channel"]["alternatives"]:
             for word in alternative["words"]:
                 speaker_ids += word["speaker"]
 
