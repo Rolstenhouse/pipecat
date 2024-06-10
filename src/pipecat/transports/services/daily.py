@@ -662,12 +662,12 @@ class DailyOutputTransport(BaseOutputTransport):
 
     def send_metrics(self, frame: MetricsFrame):
         ttfb = [{"name": n, "time": t} for n, t in frame.ttfb.items()]
-        message = DailyTransportMessageFrame(message={
-            "type": "pipecat-metrics",
-            "metrics": {
-                "ttfb": ttfb
-            },
-        })
+        message = DailyTransportMessageFrame(
+            message={
+                "type": "pipecat-metrics",
+                "metrics": {"ttfb": ttfb},
+            }
+        )
         self._client.send_message(message)
 
     def write_raw_audio_frames(self, frames: bytes):
@@ -745,7 +745,7 @@ class DailyTransport(BaseTransport):
     # DailyTransport
     #
 
-    @ property
+    @property
     def participant_id(self) -> str:
         return self._client.participant_id
 
@@ -888,7 +888,7 @@ class DailyTransport(BaseTransport):
                 speaker_ids.append(word["speaker"])
 
         speaker_id = max(set(speaker_ids), key=speaker_ids.count)
-        logger.log(f"Speaker ID: {speaker_id}")
+        logger.info(f"Speaker ID: {speaker_id}")
 
         if speaker_id is not None and is_final:
             text = f"[Speaker {speaker_id}]: {text}"
