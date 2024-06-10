@@ -874,7 +874,7 @@ class DailyTransport(BaseTransport):
         speaker_ids = []
         for alternative in message["rawResponse"]["channel"]["alternatives"]:
             for word in alternative["words"]:
-                speaker_ids += word["speaker"]
+                speaker_ids.append(word["speaker"])
 
         speaker_id = max(set(speaker_ids), key=speaker_ids.count)
 
